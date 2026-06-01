@@ -11,6 +11,7 @@
 
 var polyline = {};
 var EXTENDED_PREFIX = '!';
+var TIMESTAMP_FACTOR = 0.001;
 
 function py2_round(value) {
     // Google's polyline algorithm uses the same rounding strategy as Python 2, which is different from JS for negative values
@@ -34,7 +35,7 @@ function encode(current, previous, factor) {
 }
 
 function factorForDimension(dimension, factor) {
-    return dimension === 3 ? 1 : factor;
+    return dimension === 3 ? TIMESTAMP_FACTOR : factor;
 }
 
 function decodeCoordinates(str, precision, dimensions) {

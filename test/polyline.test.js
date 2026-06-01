@@ -49,8 +49,8 @@ test('polyline', function(t) {
         'type': 'LineString',
         'coordinates': [
             [-120.2, 38.5, 12.34568, 1710000000000],
-            [-120.95001, 40.70001, 13.45679, 1710000001234],
-            [-126.453, 43.252, 14.56789, 1710000004321]
+            [-120.95001, 40.70001, 13.45679, 1710000001000],
+            [-126.453, 43.252, 14.56789, 1710000004000]
         ]
     };
 
@@ -194,7 +194,7 @@ test('polyline', function(t) {
         t.test('stores timestamps after the first position as deltas', function(t) {
             var encoded = polyline.fromGeoJSON({
                 'type': 'LineString',
-                'coordinates': [[0, 0, 0, 1710000000000], [0, 0, 0, 1710000000001]]
+                'coordinates': [[0, 0, 0, 1710000000000], [0, 0, 0, 1710000001000]]
             });
             t.equal(encoded.substring(encoded.length - 4), '???A');
             t.end();
@@ -216,6 +216,18 @@ test('polyline', function(t) {
 
         t.test('round-trips GeoJSON coordinates with altitude and delta-encoded timestamps after rounding', function(t) {
             t.deepEqual(polyline.toGeoJSON(polyline.fromGeoJSON(geojsonWithZT)), roundedGeojsonWithZT);
+            t.end();
+        });
+
+        t.test('allows timestamp collisions after rounding to seconds', function(t) {
+            var geojsonWithCollidingTimestamps = {
+                'type': 'LineString',
+                'coordinates': [[0, 0, 0, 1710000000100], [1, 1, 1, 1710000000200]]
+            };
+            t.deepEqual(polyline.toGeoJSON(polyline.fromGeoJSON(geojsonWithCollidingTimestamps)), {
+                'type': 'LineString',
+                'coordinates': [[0, 0, 0, 1710000000000], [1, 1, 1, 1710000000000]]
+            });
             t.end();
         });
 
