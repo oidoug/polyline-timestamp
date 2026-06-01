@@ -9,6 +9,16 @@ implementation in Javascript. Compatible with nodejs (`npm install @mapbox/polyl
 Encodes from / decodes into `[lat, lng]` coordinate pairs. Use `fromGeoJSON()` to encode from GeoJSON objects, or `toGeoJSON` to
 decode to a GeoJSON LineString.
 
+GeoJSON LineStrings may use `[longitude, latitude]`, `[longitude, latitude, altitude]`, or
+`[longitude, latitude, altitude, timestamp]` positions. Altitude and timestamp streams use
+an extended polyline format prefixed with `!3` or `!4`. Longitude, latitude, and altitude
+are rounded using the configured precision. Timestamps are rounded to integer units; the
+first timestamp is stored in full and the following timestamps are stored as deltas.
+
+The fourth timestamp element is a historical GeoJSON extension. [RFC 7946](https://www.rfc-editor.org/rfc/rfc7946.html#section-3.1.1)
+recommends limiting positions to three elements because parsers may ignore additional
+elements.
+
 ## Installation
 
     npm install @mapbox/polyline

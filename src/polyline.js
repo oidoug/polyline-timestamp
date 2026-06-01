@@ -10,6 +10,7 @@
  */
 
 var polyline = {};
+var EXTENDED_PREFIX = '!';
 
 function py2_round(value) {
     // Google's polyline algorithm uses the same rounding strategy as Python 2, which is different from JS for negative values
@@ -32,6 +33,71 @@ function encode(current, previous, factor) {
     return output;
 }
 
+function factorForDimension(dimension, factor) {
+    return dimension === 3 ? 1 : factor;
+}
+
+function decodeCoordinates(str, precision, dimensions) {
+    var index = 0,
+        coordinates = [],
+        current = [],
+        factor = Math.pow(10, Number.isInteger(precision) ? precision : 5);
+
+    for (var i = 0; i < dimensions; i++) {
+        current.push(0);
+    }
+
+    while (index < str.length) {
+        var coordinate = [];
+
+        for (var dimension = 0; dimension < dimensions; dimension++) {
+            var byte = null,
+                shift = 1,
+                result = 0;
+
+            do {
+                byte = str.charCodeAt(index++) - 63;
+                result += (byte & 0x1f) * shift;
+                shift *= 32;
+            } while (byte >= 0x20);
+
+            var change = (result & 1) ? ((-result - 1) / 2) : (result / 2),
+                dimensionFactor = factorForDimension(dimension, factor);
+
+            current[dimension] += change;
+            coordinate.push(current[dimension] / dimensionFactor);
+        }
+
+        coordinates.push(coordinate);
+    }
+
+    return coordinates;
+}
+
+function encodeCoordinates(coordinates, precision, dimensions) {
+    if (!coordinates.length) { return ''; }
+
+    var factor = Math.pow(10, Number.isInteger(precision) ? precision : 5),
+        output = '',
+        previous = [];
+
+    for (var dimension = 0; dimension < dimensions; dimension++) {
+        previous.push(0);
+    }
+
+    for (var i = 0; i < coordinates.length; i++) {
+        var coordinate = coordinates[i];
+
+        for (dimension = 0; dimension < dimensions; dimension++) {
+            var dimensionFactor = factorForDimension(dimension, factor);
+            output += encode(coordinate[dimension], previous[dimension], dimensionFactor);
+            previous[dimension] = coordinate[dimension];
+        }
+    }
+
+    return output;
+}
+
 /**
  * Decodes to a [latitude, longitude] coordinates array.
  *
@@ -44,53 +110,7 @@ function encode(current, previous, factor) {
  * @see https://github.com/Project-OSRM/osrm-frontend/blob/master/WebContent/routing/OSRM.RoutingGeometry.js
  */
 polyline.decode = function(str, precision) {
-    var index = 0,
-        lat = 0,
-        lng = 0,
-        coordinates = [],
-        shift = 0,
-        result = 0,
-        byte = null,
-        latitude_change,
-        longitude_change,
-        factor = Math.pow(10, Number.isInteger(precision) ? precision : 5);
-
-    // Coordinates have variable length when encoded, so just keep
-    // track of whether we've hit the end of the string. In each
-    // loop iteration, a single coordinate is decoded.
-    while (index < str.length) {
-
-        // Reset shift, result, and byte
-        byte = null;
-        shift = 1;
-        result = 0;
-
-        do {
-            byte = str.charCodeAt(index++) - 63;
-            result += (byte & 0x1f) * shift;
-            shift *= 32;
-        } while (byte >= 0x20);
-
-        latitude_change = (result & 1) ? ((-result - 1) / 2) : (result / 2);
-
-        shift = 1;
-        result = 0;
-
-        do {
-            byte = str.charCodeAt(index++) - 63;
-            result += (byte & 0x1f) * shift;
-            shift *= 32;
-        } while (byte >= 0x20);
-
-        longitude_change = (result & 1) ? ((-result - 1) / 2) : (result / 2);
-
-        lat += latitude_change;
-        lng += longitude_change;
-
-        coordinates.push([lat / factor, lng / factor]);
-    }
-
-    return coordinates;
+    return decodeCoordinates(str, precision, 2);
 };
 
 /**
@@ -101,27 +121,35 @@ polyline.decode = function(str, precision) {
  * @returns {String}
  */
 polyline.encode = function(coordinates, precision) {
-    if (!coordinates.length) { return ''; }
-
-    var factor = Math.pow(10, Number.isInteger(precision) ? precision : 5),
-        output = encode(coordinates[0][0], 0, factor) + encode(coordinates[0][1], 0, factor);
-
-    for (var i = 1; i < coordinates.length; i++) {
-        var a = coordinates[i], b = coordinates[i - 1];
-        output += encode(a[0], b[0], factor);
-        output += encode(a[1], b[1], factor);
-    }
-
-    return output;
+    return encodeCoordinates(coordinates, precision, 2);
 };
 
 function flipped(coords) {
     var flipped = [];
     for (var i = 0; i < coords.length; i++) {
         var coord = coords[i].slice();
-        flipped.push([coord[1], coord[0]]);
+        var x = coord[0];
+        coord[0] = coord[1];
+        coord[1] = x;
+        flipped.push(coord);
     }
     return flipped;
+}
+
+function getDimensions(coords) {
+    var dimensions = coords.length ? coords[0].length : 2;
+
+    if (dimensions < 2 || dimensions > 4) {
+        throw new Error('GeoJSON positions must have between 2 and 4 elements');
+    }
+
+    for (var i = 1; i < coords.length; i++) {
+        if (coords[i].length !== dimensions) {
+            throw new Error('GeoJSON positions must have consistent dimensions');
+        }
+    }
+
+    return dimensions;
 }
 
 /**
@@ -138,7 +166,15 @@ polyline.fromGeoJSON = function(geojson, precision) {
     if (!geojson || geojson.type !== 'LineString') {
         throw new Error('Input must be a GeoJSON LineString');
     }
-    return polyline.encode(flipped(geojson.coordinates), precision);
+
+    var coords = flipped(geojson.coordinates),
+        dimensions = getDimensions(coords);
+
+    if (dimensions === 2) {
+        return polyline.encode(coords, precision);
+    }
+
+    return EXTENDED_PREFIX + dimensions + encodeCoordinates(coords, precision, dimensions);
 };
 
 /**
@@ -149,7 +185,20 @@ polyline.fromGeoJSON = function(geojson, precision) {
  * @returns {Object}
  */
 polyline.toGeoJSON = function(str, precision) {
-    var coords = polyline.decode(str, precision);
+    var coords;
+
+    if (str.charAt(0) === EXTENDED_PREFIX) {
+        var dimensions = parseInt(str.charAt(1), 10);
+
+        if (dimensions !== 3 && dimensions !== 4) {
+            throw new Error('Invalid extended polyline dimensions');
+        }
+
+        coords = decodeCoordinates(str.substring(2), precision, dimensions);
+    } else {
+        coords = polyline.decode(str, precision);
+    }
+
     return {
         type: 'LineString',
         coordinates: flipped(coords)

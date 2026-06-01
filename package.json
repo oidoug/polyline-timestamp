@@ -1,9 +1,9 @@
 {
-  "name": "@mapbox/polyline",
+  "name": "@oidoug/polyline-timestamp",
   "author": "Mapbox",
-  "description": "Polyline encoding and decoding",
+  "description": "Timestamp-aware polyline encoding and decoding",
   "license": "BSD-3-Clause",
-  "version": "1.2.1",
+  "version": "0.1.0",
   "repository": {
     "type": "git",
     "url": "git://github.com/mapbox/polyline.git"

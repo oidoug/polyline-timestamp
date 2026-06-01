@@ -21,6 +21,38 @@ test('polyline', function(t) {
         },
         'properties': {}
     };
+    var geojsonWithZ = {
+        'type': 'LineString',
+        'coordinates': [
+            [-120.200004, 38.500004, 12.345678],
+            [-120.950006, 40.700006, 13.456789],
+            [-126.453004, 43.252004, 14.567891]
+        ]
+    };
+    var roundedGeojsonWithZ = {
+        'type': 'LineString',
+        'coordinates': [
+            [-120.2, 38.5, 12.34568],
+            [-120.95001, 40.70001, 13.45679],
+            [-126.453, 43.252, 14.56789]
+        ]
+    };
+    var geojsonWithZT = {
+        'type': 'LineString',
+        'coordinates': [
+            [-120.200004, 38.500004, 12.345678, 1710000000000],
+            [-120.950006, 40.700006, 13.456789, 1710000001234],
+            [-126.453004, 43.252004, 14.567891, 1710000004321]
+        ]
+    };
+    var roundedGeojsonWithZT = {
+        'type': 'LineString',
+        'coordinates': [
+            [-120.2, 38.5, 12.34568, 1710000000000],
+            [-120.95001, 40.70001, 13.45679, 1710000001234],
+            [-126.453, 43.252, 14.56789, 1710000004321]
+        ]
+    };
 
     t.test('#decode()', function(t) {
         t.test('decodes an empty Array', function(t) {
@@ -129,12 +161,68 @@ test('polyline', function(t) {
             t.end();
         });
 
+        t.test('encodes altitude with an extended stream prefix', function(t) {
+            t.equal(polyline.fromGeoJSON(geojsonWithZ).substring(0, 2), '!3');
+            t.end();
+        });
+
+        t.test('encodes altitude and timestamp with an extended stream prefix', function(t) {
+            t.equal(polyline.fromGeoJSON(geojsonWithZT).substring(0, 2), '!4');
+            t.end();
+        });
+
+        t.test('requires consistent position dimensions', function(t) {
+            t.throws(function() {
+                polyline.fromGeoJSON({
+                    'type': 'LineString',
+                    'coordinates': [[-120.2, 38.5, 12], [-120.95, 40.7]]
+                });
+            }, /GeoJSON positions must have consistent dimensions/);
+            t.end();
+        });
+
+        t.test('rejects positions with more than four elements', function(t) {
+            t.throws(function() {
+                polyline.fromGeoJSON({
+                    'type': 'LineString',
+                    'coordinates': [[-120.2, 38.5, 12, 1710000000000, 1]]
+                });
+            }, /GeoJSON positions must have between 2 and 4 elements/);
+            t.end();
+        });
+
+        t.test('stores timestamps after the first position as deltas', function(t) {
+            var encoded = polyline.fromGeoJSON({
+                'type': 'LineString',
+                'coordinates': [[0, 0, 0, 1710000000000], [0, 0, 0, 1710000000001]]
+            });
+            t.equal(encoded.substring(encoded.length - 4), '???A');
+            t.end();
+        });
+
         t.end();
     });
 
     t.test('#toGeoJSON()', function(t) {
         t.test('flips coordinates and decodes geometry', function(t) {
             t.deepEqual(polyline.toGeoJSON('_p~iF~ps|U_ulLnnqC_mqNvxq`@'), geojson.geometry);
+            t.end();
+        });
+
+        t.test('round-trips GeoJSON coordinates with altitude after rounding', function(t) {
+            t.deepEqual(polyline.toGeoJSON(polyline.fromGeoJSON(geojsonWithZ)), roundedGeojsonWithZ);
+            t.end();
+        });
+
+        t.test('round-trips GeoJSON coordinates with altitude and delta-encoded timestamps after rounding', function(t) {
+            t.deepEqual(polyline.toGeoJSON(polyline.fromGeoJSON(geojsonWithZT)), roundedGeojsonWithZT);
+            t.end();
+        });
+
+        t.test('rejects invalid extended stream dimensions', function(t) {
+            t.throws(function() {
+                polyline.toGeoJSON('!2');
+            }, /Invalid extended polyline dimensions/);
             t.end();
         });
 
